@@ -85,7 +85,7 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
     )
 
     raw_response = call_llm(prompt, temperature=0.6)  # slightly higher temp — this step benefits from creativity
-
+    print(f"\n[DEBUG] Raw hypothesis generation response:\n{raw_response}\n{'='*50}")
     hypotheses = extract_json(raw_response)
 
     if not hypotheses or not isinstance(hypotheses, list):

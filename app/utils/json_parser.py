@@ -31,11 +31,17 @@ def extract_json(raw_response: str) -> Union[dict, list, None]:
     object_match = re.search(r"\{.*\}", text, re.DOTALL)
 
     candidates = []
-    if array_match:
-        candidates.append(array_match.group(0))
     if object_match:
         candidates.append(object_match.group(0))
+    if array_match:
+        candidates.append(array_match.group(0))
     candidates.append(text)
+
+    # Prefer the LARGEST valid match. A nested array inside an object
+    # (e.g. the "weaknesses" list inside a dict) is technically valid JSON
+    # on its own, so without this we could incorrectly parse just the
+    # inner piece instead of the full intended structure.
+    candidates = sorted(set(candidates), key=len, reverse=True)
 
     for candidate in candidates:
         try:
@@ -51,8 +57,10 @@ if __name__ == "__main__":
     test2 = 'Here is the result:\n```\n{"key": "value"}\n```\nHope that helps!'
     test3 = '[{"x": "y"}]'
     test4 = 'garbage text with no json'
+    test5 = '{"feasibility": "Medium", "weaknesses": ["a", "b"], "score": 5}'
 
     print(extract_json(test1))
     print(extract_json(test2))
     print(extract_json(test3))
     print(extract_json(test4))
+    print(extract_json(test5))

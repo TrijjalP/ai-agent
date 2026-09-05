@@ -17,6 +17,10 @@ class ResearchState(TypedDict, total=False):
                                    # e.g. "compare India vs other countries"
                                    # e.g. "general gaps in current research"
                                    # e.g. "2021 onwards, India vs globally"
+    score_weights: dict            # user-defined weights for critique scoring, e.g.
+                                    # {"feasibility_score": 0.3, "novelty_score": 0.2,
+                                    #  "evidence_grounding_score": 0.3, "specificity_score": 0.2}
+                                    # must sum to 1.0; defaults to equal weights if not provided
 
     # --- Filled in by Retrieval Agent ---
     retrieved_chunks: List[dict]
