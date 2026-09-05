@@ -3,3 +3,5 @@ arxiv
 python-dotenv
 pydantic
 beautifulsoup4
+sentence-transformers
+chromadb
