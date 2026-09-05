@@ -40,7 +40,8 @@ def store_chunks(chunks: List[Chunk]):
             "paper_title": c.paper_title,
             "source": c.source,
             "chunk_index": c.chunk_index,
-            "is_india_affiliated": c.is_india_affiliated
+            "is_india_affiliated": c.is_india_affiliated,
+            "published": c.published
         }
         for c in chunks
     ]
@@ -56,14 +57,6 @@ def store_chunks(chunks: List[Chunk]):
 
 
 def search_chunks(query: str, n_results: int = 3, india_only: bool = False):
-    """
-    Semantic search: find the most relevant stored chunks for a query.
-
-    Args:
-        query: search text
-        n_results: how many results to return
-        india_only: if True, only search within India-affiliated chunks
-    """
     collection = get_collection()
     query_embedding = embed_texts([query])[0]
 
@@ -79,7 +72,6 @@ def search_chunks(query: str, n_results: int = 3, india_only: bool = False):
 
 
 def count_chunks() -> int:
-    """Returns how many chunks are currently stored in the database."""
     collection = get_collection()
     return collection.count()
 
@@ -106,4 +98,5 @@ if __name__ == "__main__":
     )):
         print(f"\n--- Result {i+1} (distance: {dist:.4f}) ---")
         print("From paper:", meta["paper_title"])
+        print("Published:", meta["published"])
         print("Text:", doc[:200], "...")

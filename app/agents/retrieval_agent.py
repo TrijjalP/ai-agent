@@ -12,21 +12,6 @@ from app.orchestrator.state import ResearchState
 
 
 def run_retrieval_agent(state: ResearchState, n_results: int = 8, fetch_fresh: bool = True) -> ResearchState:
-    """
-    Retrieval Agent's job:
-    1. (Optional) Fetch fresh papers on the topic and add them to the knowledge base
-    2. Semantically search the knowledge base for the most relevant chunks
-    3. Return the updated state with `retrieved_chunks` filled in
-
-    Args:
-        state: the shared research state (must contain 'topic', 'india_only')
-        n_results: how many chunks to retrieve for downstream agents
-        fetch_fresh: if True, fetch live papers from Europe PMC before searching
-                     (fetch-on-demand behavior from our earlier design decision)
-
-    Returns:
-        Updated state with 'retrieved_chunks' populated.
-    """
     topic = state["topic"]
     india_only = state.get("india_only", False)
     year_from = state.get("year_from")
@@ -54,7 +39,6 @@ def run_retrieval_agent(state: ResearchState, n_results: int = 8, fetch_fresh: b
     print(f"[Retrieval Agent] Searching knowledge base for top {n_results} relevant chunks...")
     results = search_chunks(query=topic, n_results=n_results, india_only=india_only)
 
-    # Reshape ChromaDB's raw output into a clean list of dicts for downstream agents
     retrieved_chunks = []
     if results["documents"] and results["documents"][0]:
         for doc, meta, dist in zip(
@@ -68,6 +52,7 @@ def run_retrieval_agent(state: ResearchState, n_results: int = 8, fetch_fresh: b
                 "paper_id": meta["paper_id"],
                 "source": meta["source"],
                 "is_india_affiliated": meta["is_india_affiliated"],
+                "published": meta.get("published", "unknown"),
                 "relevance_distance": dist
             })
 
@@ -78,7 +63,6 @@ def run_retrieval_agent(state: ResearchState, n_results: int = 8, fetch_fresh: b
 
 
 if __name__ == "__main__":
-    # Test the agent standalone, exactly how LangGraph will call it later
     initial_state: ResearchState = {
         "topic": "tuberculosis drug resistance in India",
         "india_only": True,
@@ -92,6 +76,7 @@ if __name__ == "__main__":
     for i, chunk in enumerate(updated_state["retrieved_chunks"], start=1):
         print(f"\n--- Chunk {i} ---")
         print("Paper:", chunk["paper_title"])
+        print("Published:", chunk["published"])
         print("India-affiliated:", chunk["is_india_affiliated"])
         print("Distance:", round(chunk["relevance_distance"], 4))
         print("Text:", chunk["text"][:150], "...")

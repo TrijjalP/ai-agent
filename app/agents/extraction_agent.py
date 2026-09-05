@@ -28,16 +28,10 @@ Respond ONLY with a valid JSON object in this exact format, with no extra text b
 
 
 def extract_facts_from_chunk(chunk_text: str) -> dict:
-    """
-    Calls the LLM on a single chunk and parses its JSON response.
-    Falls back to a safe default if the LLM output isn't valid JSON
-    (small local models occasionally produce malformed JSON).
-    """
     prompt = EXTRACTION_PROMPT_TEMPLATE.format(chunk_text=chunk_text)
     raw_response = call_llm(prompt, temperature=0.2)
 
     try:
-        # Small models sometimes wrap JSON in markdown code fences — strip those if present
         cleaned = raw_response.strip()
         if cleaned.startswith("```"):
             cleaned = cleaned.strip("`")
@@ -50,7 +44,6 @@ def extract_facts_from_chunk(chunk_text: str) -> dict:
             "statistics": parsed.get("statistics", [])
         }
     except (json.JSONDecodeError, AttributeError):
-        # Graceful fallback — don't crash the whole pipeline over one bad extraction
         print("[Extraction Agent] Warning: could not parse LLM output as JSON. Using fallback.")
         return {
             "key_finding": raw_response[:200] if raw_response else "Could not extract",
@@ -60,15 +53,6 @@ def extract_facts_from_chunk(chunk_text: str) -> dict:
 
 
 def run_extraction_agent(state: ResearchState) -> ResearchState:
-    """
-    Extraction Agent's job:
-    1. Take each chunk from state['retrieved_chunks']
-    2. Extract structured facts from it via the LLM
-    3. Attach the extracted facts back, keeping traceability to the source paper
-
-    Returns:
-        Updated state with 'extracted_facts' populated.
-    """
     chunks = state.get("retrieved_chunks", [])
     print(f"[Extraction Agent] Extracting facts from {len(chunks)} chunk(s)...")
 
@@ -81,6 +65,7 @@ def run_extraction_agent(state: ResearchState) -> ResearchState:
             "paper_title": chunk["paper_title"],
             "paper_id": chunk["paper_id"],
             "is_india_affiliated": chunk["is_india_affiliated"],
+            "published": chunk.get("published", "unknown"),
             "key_finding": facts["key_finding"],
             "entities": facts["entities"],
             "statistics": facts["statistics"]
@@ -93,7 +78,6 @@ def run_extraction_agent(state: ResearchState) -> ResearchState:
 
 
 if __name__ == "__main__":
-    # Test: chain Retrieval Agent -> Extraction Agent, exactly how LangGraph will do it later
     from app.agents.retrieval_agent import run_retrieval_agent
 
     initial_state: ResearchState = {
@@ -103,13 +87,14 @@ if __name__ == "__main__":
         "year_to": 2026
     }
 
-    state = run_retrieval_agent(initial_state, n_results=3)  # small number for a quick test
+    state = run_retrieval_agent(initial_state, n_results=3)
     state = run_extraction_agent(state)
 
     print("\n=== Extracted Facts ===")
     for i, fact in enumerate(state["extracted_facts"], start=1):
         print(f"\n--- Fact {i} ---")
         print("Paper:", fact["paper_title"])
+        print("Published:", fact["published"])
         print("Key finding:", fact["key_finding"])
         print("Entities:", fact["entities"])
         print("Statistics:", fact["statistics"])

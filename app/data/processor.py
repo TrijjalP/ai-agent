@@ -18,6 +18,7 @@ class Chunk(BaseModel):
     chunk_index: int
     text: str
     is_india_affiliated: bool = False
+    published: str = "unknown"
 
 
 def clean_text(raw_text: str) -> str:
@@ -62,7 +63,8 @@ def process_paper(paper: Paper, max_words: int = 150) -> List[Chunk]:
             source=paper.source,
             chunk_index=i,
             text=chunk,
-            is_india_affiliated=paper.is_india_affiliated
+            is_india_affiliated=paper.is_india_affiliated,
+            published=paper.published
         )
         for i, chunk in enumerate(text_chunks)
     ]
@@ -78,5 +80,5 @@ if __name__ == "__main__":
         chunks = process_paper(paper)
         print(f"Split into {len(chunks)} chunk(s)")
         for c in chunks:
-            print(f"\n  [Chunk {c.chunk_index}] ({len(c.text.split())} words)")
+            print(f"\n  [Chunk {c.chunk_index}] Published: {c.published}")
             print(" ", c.text[:150], "...")
