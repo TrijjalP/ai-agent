@@ -7,6 +7,7 @@ clean structured data instead of raw paragraphs.
 """
 
 import json
+from app.utils.json_parser import extract_json
 from app.utils.llm_client import call_llm
 from app.orchestrator.state import ResearchState
 
@@ -31,19 +32,15 @@ def extract_facts_from_chunk(chunk_text: str) -> dict:
     prompt = EXTRACTION_PROMPT_TEMPLATE.format(chunk_text=chunk_text)
     raw_response = call_llm(prompt, temperature=0.2)
 
-    try:
-        cleaned = raw_response.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.strip("`")
-            cleaned = cleaned.replace("json", "", 1).strip()
+    parsed = extract_json(raw_response)
 
-        parsed = json.loads(cleaned)
+    if parsed and isinstance(parsed, dict):
         return {
             "key_finding": parsed.get("key_finding", ""),
             "entities": parsed.get("entities", []),
             "statistics": parsed.get("statistics", [])
         }
-    except (json.JSONDecodeError, AttributeError):
+    else:
         print("[Extraction Agent] Warning: could not parse LLM output as JSON. Using fallback.")
         return {
             "key_finding": raw_response[:200] if raw_response else "Could not extract",

@@ -8,6 +8,7 @@ time-based, etc.)
 """
 
 import json
+from app.utils.json_parser import extract_json
 from app.utils.llm_client import call_llm
 from app.orchestrator.state import ResearchState
 
@@ -77,16 +78,9 @@ def run_gap_detection_agent(state: ResearchState) -> ResearchState:
 
     raw_response = call_llm(prompt, temperature=0.4)
 
-    try:
-        cleaned = raw_response.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.strip("`")
-            cleaned = cleaned.replace("json", "", 1).strip()
+    gaps = extract_json(raw_response)
 
-        gaps = json.loads(cleaned)
-        if not isinstance(gaps, list):
-            raise ValueError("Expected a JSON list")
-    except (json.JSONDecodeError, ValueError, AttributeError):
+    if not gaps or not isinstance(gaps, list):
         print("[Gap Detection Agent] Warning: could not parse LLM output as JSON. Using fallback.")
         gaps = [{
             "gap_description": raw_response[:300] if raw_response else "Could not identify gaps",
