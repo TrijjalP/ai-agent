@@ -87,7 +87,7 @@ def process_uploaded_files(file_paths: list) -> list:
 
 if __name__ == "__main__":
     # Manual test — put a real PDF path here to test
-    test_files = ["sample_paper.pdf"]  # replace with a real file path on your machine
+    test_files = ["test_paper.pdf"]  # replace with a real file path on your machine
     papers = process_uploaded_files(test_files)
 
     for p in papers:

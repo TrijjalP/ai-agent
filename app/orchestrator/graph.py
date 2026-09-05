@@ -62,13 +62,13 @@ if __name__ == "__main__":
     }
 
     initial_state: ResearchState = {
-        "topic": "AI in biomedical research",
+        "topic": "biomedical engineering current trends and future prospects",
         "india_only": False,
         "year_from": 2021,
         "year_to": 2026,
         "gap_focus": "Compare AI in biomedical research in India versus other countries, focused on research from 2021 onwards",
         "score_weights": custom_weights,
-        "uploaded_file_paths": []
+        "uploaded_file_paths": ["test_paper.pdf"]
     }
 
     print("Running full research pipeline via LangGraph...\n")
@@ -86,5 +86,8 @@ if __name__ == "__main__":
             print(f"  Sub-scores — Feasibility: {hyp['feasibility_score']}, Novelty: {hyp['novelty_score']}, "
                   f"Grounding: {hyp['evidence_grounding_score']}, Specificity: {hyp['specificity_score']}")
             print("  Weaknesses:", hyp["weaknesses"])
+            print("  Sources used:")
+            for src in hyp.get("source_breakdown", []):
+                print(f"    - \"{src['title']}\" [{src['origin']}]")
             if hyp.get("ranking_rationale"):
                 print("Why ranked #1:", hyp["ranking_rationale"])

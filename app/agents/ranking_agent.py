@@ -21,18 +21,35 @@ Be concise — under 60 words total. Respond with plain text only, no JSON, no m
 """
 
 
-def merge_hypothesis_and_critique(hypotheses: list, critiques: list) -> list:
+def merge_hypothesis_and_critique(hypotheses: list, critiques: list, retrieved_chunks: list) -> list:
     """
-    Merges each hypothesis with its corresponding critique data, matched by
-    order (both lists are generated in the same sequence by earlier agents).
+    Merges each hypothesis with its corresponding critique data, and attaches
+    a clear list of source papers (with origin: fetched vs user-uploaded)
+    that the hypothesis's grounding evidence maps back to.
     """
+    # Build a lookup: paper_title -> source type, from the actual retrieved chunks
+    title_to_source = {}
+    for chunk in retrieved_chunks:
+        title_to_source[chunk["paper_title"]] = chunk["source"]
+
     merged = []
     for hyp, crit in zip(hypotheses, critiques):
+        grounding_titles = hyp.get("grounding_evidence", [])
+
+        source_breakdown = []
+        for title in grounding_titles:
+            origin = title_to_source.get(title, "unknown")
+            origin_label = "User-uploaded" if origin == "user_upload" else (
+                "arXiv" if origin == "arxiv" else "Europe PMC (fetched)"
+            )
+            source_breakdown.append({"title": title, "origin": origin_label})
+
         merged.append({
             "hypothesis": hyp.get("hypothesis", ""),
             "addresses_gap": hyp.get("addresses_gap", ""),
             "novelty_justification": hyp.get("novelty_justification", ""),
-            "grounding_evidence": hyp.get("grounding_evidence", []),
+            "grounding_evidence": grounding_titles,
+            "source_breakdown": source_breakdown,
             "feasibility_score": crit.get("feasibility_score", 0),
             "novelty_score": crit.get("novelty_score", 0),
             "evidence_grounding_score": crit.get("evidence_grounding_score", 0),
@@ -89,7 +106,7 @@ def generate_ranking_rationale(top_hypothesis: dict) -> str:
 def run_ranking_agent(state: ResearchState) -> ResearchState:
     """
     Ranking Agent's job:
-    1. Merge hypotheses with their critiques
+    1. Merge hypotheses with their critiques and source origin breakdown
     2. Sort by overall_soundness_score, highest first
     3. Assign a rank number to each
     4. Generate a short rationale for why the #1 hypothesis ranked highest
@@ -99,6 +116,7 @@ def run_ranking_agent(state: ResearchState) -> ResearchState:
     """
     hypotheses = state.get("hypotheses", [])
     critiques = state.get("critiques", [])
+    retrieved_chunks = state.get("retrieved_chunks", [])
 
     print(f"[Ranking Agent] Merging {len(hypotheses)} hypotheses with their critiques...")
 
@@ -107,7 +125,7 @@ def run_ranking_agent(state: ResearchState) -> ResearchState:
         state["ranked_hypotheses"] = []
         return state
 
-    merged = merge_hypothesis_and_critique(hypotheses, critiques)
+    merged = merge_hypothesis_and_critique(hypotheses, critiques, retrieved_chunks)
 
     print("[Ranking Agent] Sorting by overall soundness score...")
     ranked = sorted(merged, key=lambda h: h["overall_soundness_score"], reverse=True)
@@ -119,7 +137,7 @@ def run_ranking_agent(state: ResearchState) -> ResearchState:
     if ranked:
         ranked[0]["ranking_rationale"] = generate_ranking_rationale(ranked[0])
         for hyp in ranked[1:]:
-            hyp["ranking_rationale"] = None  # only the top hypothesis gets an explicit rationale
+            hyp["ranking_rationale"] = None
 
     print(f"[Ranking Agent] Done. Ranked {len(ranked)} hypothesis/hypotheses.")
 
