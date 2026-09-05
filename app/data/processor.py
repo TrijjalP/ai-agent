@@ -1,11 +1,6 @@
 """
 processor.py
 Cleans raw paper text and splits it into chunks suitable for embedding.
-
-Why chunking matters: embedding models work best on smaller, focused
-pieces of text (a few sentences to a paragraph). A whole abstract is
-usually fine as one chunk, but full-text papers (later) need splitting.
-This module handles both cases with the same logic.
 """
 
 import re
@@ -22,36 +17,17 @@ class Chunk(BaseModel):
     source: str
     chunk_index: int
     text: str
+    is_india_affiliated: bool = False
 
 
 def clean_text(raw_text: str) -> str:
-    """
-    Remove HTML/XML tags and normalize whitespace from raw text.
-    """
-    # Strip any HTML/XML tags (some abstracts contain <i>, <sub>, etc.)
     soup = BeautifulSoup(raw_text, "html.parser")
     text = soup.get_text()
-
-    # Collapse multiple spaces/newlines into single spaces
     text = re.sub(r"\s+", " ", text)
-
     return text.strip()
 
 
 def chunk_text(text: str, max_words: int = 150) -> List[str]:
-    """
-    Split text into chunks of roughly `max_words` words, breaking on
-    sentence boundaries so we don't cut a sentence in half.
-
-    Args:
-        text: cleaned text to split
-        max_words: target max words per chunk
-
-    Returns:
-        A list of text chunks.
-    """
-    # Simple sentence split (good enough for abstracts; we can upgrade
-    # to a proper NLP sentence splitter later if needed)
     sentences = re.split(r"(?<=[.!?])\s+", text)
 
     chunks = []
@@ -62,7 +38,6 @@ def chunk_text(text: str, max_words: int = 150) -> List[str]:
         word_count = len(sentence.split())
 
         if current_word_count + word_count > max_words and current_chunk:
-            # Save the current chunk and start a new one
             chunks.append(" ".join(current_chunk))
             current_chunk = []
             current_word_count = 0
@@ -70,7 +45,6 @@ def chunk_text(text: str, max_words: int = 150) -> List[str]:
         current_chunk.append(sentence)
         current_word_count += word_count
 
-    # Add the last remaining chunk
     if current_chunk:
         chunks.append(" ".join(current_chunk))
 
@@ -78,16 +52,6 @@ def chunk_text(text: str, max_words: int = 150) -> List[str]:
 
 
 def process_paper(paper: Paper, max_words: int = 150) -> List[Chunk]:
-    """
-    Clean and chunk a single paper's abstract/text into Chunk objects.
-
-    Args:
-        paper: a Paper object (from europepmc_fetcher or arxiv_fetcher)
-        max_words: target words per chunk
-
-    Returns:
-        A list of Chunk objects, each traceable back to the source paper.
-    """
     cleaned = clean_text(paper.summary)
     text_chunks = chunk_text(cleaned, max_words=max_words)
 
@@ -97,7 +61,8 @@ def process_paper(paper: Paper, max_words: int = 150) -> List[Chunk]:
             paper_title=paper.title,
             source=paper.source,
             chunk_index=i,
-            text=chunk
+            text=chunk,
+            is_india_affiliated=paper.is_india_affiliated
         )
         for i, chunk in enumerate(text_chunks)
     ]

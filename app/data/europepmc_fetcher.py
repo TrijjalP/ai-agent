@@ -5,7 +5,7 @@ This is our PRIMARY biomedical data source.
 No API key required.
 
 Supports an optional filter for India-affiliated research, to help ground
-our hypotheses in research relevant to India.
+our hypotheses in research relevant to India. Also supports year filtering.
 """
 
 import requests
@@ -16,7 +16,7 @@ BASE_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 
 
 class Paper(BaseModel):
-    """Same shape as the arXiv Paper model, so downstream code doesn't care about the source."""
+    """Same shape regardless of source, so downstream code doesn't care where it came from."""
     id: str
     title: str
     summary: str
@@ -24,12 +24,15 @@ class Paper(BaseModel):
     published: str
     pdf_url: Optional[str] = None
     source: str = "europepmc"
+    is_india_affiliated: bool = False
 
 
 def fetch_europepmc_papers(
     query: str,
     max_results: int = 5,
-    india_only: bool = False
+    india_only: bool = False,
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None
 ) -> List[Paper]:
     """
     Search Europe PMC for biomedical papers matching the query.
@@ -37,16 +40,22 @@ def fetch_europepmc_papers(
     Args:
         query: search term, e.g. "CRISPR gene editing cancer therapy"
         max_results: how many papers to fetch
-        india_only: if True, restrict results to papers with at least one
-                    author affiliated with an Indian institution
+        india_only: if True, restrict results to India-affiliated authors
+        year_from: if set, only include papers published on/after this year
+        year_to: if set, only include papers published on/before this year
 
     Returns:
         A list of Paper objects.
     """
     full_query = query
+
     if india_only:
-        # AFF:"India" filters on author affiliation text containing "India"
-        full_query = f'({query}) AND AFF:"India"'
+        full_query = f'({full_query}) AND AFF:"India"'
+
+    if year_from or year_to:
+        start = year_from if year_from else 1900
+        end = year_to if year_to else 2100
+        full_query = f'({full_query}) AND PUB_YEAR:[{start} TO {end}]'
 
     params = {
         "query": full_query,
@@ -82,7 +91,8 @@ def fetch_europepmc_papers(
                 authors=authors,
                 published=r.get("firstPublicationDate", "unknown"),
                 pdf_url=pdf_url,
-                source="europepmc"
+                source="europepmc",
+                is_india_affiliated=india_only
             )
         )
 
