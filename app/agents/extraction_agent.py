@@ -7,7 +7,8 @@ clean structured data instead of raw paragraphs.
 """
 
 import json
-from app.utils.json_parser import extract_json
+# from app.utils.json_parser import extract_json
+from app.utils.llm_json import call_llm_for_json
 from app.utils.llm_client import call_llm
 from app.orchestrator.state import ResearchState
 
@@ -30,9 +31,7 @@ Respond ONLY with a valid JSON object in this exact format, with no extra text b
 
 def extract_facts_from_chunk(chunk_text: str) -> dict:
     prompt = EXTRACTION_PROMPT_TEMPLATE.format(chunk_text=chunk_text)
-    raw_response = call_llm(prompt, temperature=0.2)
-
-    parsed = extract_json(raw_response)
+    parsed, raw_response = call_llm_for_json(prompt, temperature=0.2, agent_name="Extraction Agent")
 
     if parsed and isinstance(parsed, dict):
         return {

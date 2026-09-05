@@ -21,7 +21,7 @@ class ResearchState(TypedDict, total=False):
                                     # {"feasibility_score": 0.3, "novelty_score": 0.2,
                                     #  "evidence_grounding_score": 0.3, "specificity_score": 0.2}
                                     # must sum to 1.0; defaults to equal weights if not provided
-
+    uploaded_file_paths: List[str]  # local paths to up to 4 user-uploaded PDF/txt files
     # --- Filled in by Retrieval Agent ---
     retrieved_chunks: List[dict]
 

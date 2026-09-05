@@ -8,8 +8,9 @@ have rich, traceable content to work with.
 """
 
 import json
-from app.utils.json_parser import extract_json
-from app.utils.llm_client import call_llm
+# from app.utils.json_parser import extract_json
+# from app.utils.llm_client import call_llm
+from app.utils.llm_json import call_llm_for_json
 from app.orchestrator.state import ResearchState
 
 
@@ -84,9 +85,7 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
         facts_block=facts_block
     )
 
-    raw_response = call_llm(prompt, temperature=0.6)  # slightly higher temp — this step benefits from creativity
-    print(f"\n[DEBUG] Raw hypothesis generation response:\n{raw_response}\n{'='*50}")
-    hypotheses = extract_json(raw_response)
+    hypotheses, raw_response = call_llm_for_json(prompt, temperature=0.6, agent_name="Hypothesis Generation Agent")
 
     if not hypotheses or not isinstance(hypotheses, list):
         print("[Hypothesis Generation Agent] Warning: could not parse LLM output as JSON. Using fallback.")

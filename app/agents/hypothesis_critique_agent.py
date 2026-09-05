@@ -14,8 +14,9 @@ If the user doesn't provide weights, we default to equal weighting (25%
 each) as a neutral, defensible baseline.
 """
 
-from app.utils.llm_client import call_llm
-from app.utils.json_parser import extract_json
+# from app.utils.llm_client import call_llm
+# from app.utils.json_parser import extract_json
+from app.utils.llm_json import call_llm_for_json
 from app.orchestrator.state import ResearchState
 
 
@@ -100,7 +101,7 @@ def compute_overall_score(scores: dict, weights: dict) -> float:
     return round(total, 2)
 
 
-def critique_single_hypothesis(hypothesis: dict, facts: list, weights: dict) -> dict:
+def critique_single_hypothesis(hypothesis: dict, facts: list, weights: dict, max_retries: int = 1) -> dict:
     facts_block = format_facts_for_prompt(facts)
 
     prompt = CRITIQUE_PROMPT_TEMPLATE.format(
@@ -109,8 +110,7 @@ def critique_single_hypothesis(hypothesis: dict, facts: list, weights: dict) -> 
         facts_block=facts_block
     )
 
-    raw_response = call_llm(prompt, temperature=0.3)
-    parsed = extract_json(raw_response)
+    parsed, raw_response = call_llm_for_json(prompt, temperature=0.3, agent_name="Hypothesis Critique Agent")
 
     if parsed and isinstance(parsed, dict):
         sub_scores = {
