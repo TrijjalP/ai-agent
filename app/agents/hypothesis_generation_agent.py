@@ -7,9 +7,6 @@ why it's novel, so downstream agents (Critique, Ranking) and the final UI
 have rich, traceable content to work with.
 """
 
-import json
-# from app.utils.json_parser import extract_json
-# from app.utils.llm_client import call_llm
 from app.utils.llm_json import call_llm_for_json
 from app.orchestrator.state import ResearchState
 
@@ -18,19 +15,20 @@ HYPOTHESIS_PROMPT_TEMPLATE = """You are a biomedical research scientist generati
 
 The research topic is: "{topic}"
 
-Here are the identified gaps in current research:
+Here are the identified gaps in current research, each numbered:
 {gaps_block}
 
 Here is a summary of existing findings from the literature (for grounding, so your hypotheses are realistic and build on real evidence, not speculation):
 {facts_block}
 
 For EACH gap listed above, propose ONE novel, testable research hypothesis that could help address it.
+Reference which gap each hypothesis addresses using its NUMBER only (not a restatement of the text).
 
 Respond ONLY with a valid JSON array in this exact format, with no extra text before or after:
 [
   {{
     "hypothesis": "a clear, specific, testable hypothesis statement",
-    "addresses_gap": "short restatement of which gap this targets",
+    "addresses_gap_number": 1,
     "novelty_justification": "1-2 sentences explaining what makes this hypothesis new/different from existing research",
     "grounding_evidence": ["exact paper title(s) this hypothesis builds on"]
   }}
@@ -59,8 +57,12 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
     """
     Hypothesis Generation Agent's job:
     1. Take identified gaps + extracted facts from state
-    2. Ask the LLM to propose one testable hypothesis per gap
-    3. Require inline novelty justification and grounding evidence
+    2. Ask the LLM to propose one testable hypothesis per gap, referencing
+       gaps by number only (more reliable than trusting the LLM to restate
+       gap text accurately)
+    3. Programmatically attach the FULL original gap_description ourselves,
+       guaranteeing every hypothesis always shows a detailed, traceable
+       gap description regardless of how the LLM phrases things
 
     Returns:
         Updated state with 'hypotheses' populated.
@@ -92,9 +94,24 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
         hypotheses = [{
             "hypothesis": raw_response[:300] if raw_response else "Could not generate hypothesis",
             "addresses_gap": "Unknown",
+            "gap_type": "General",
             "novelty_justification": "N/A (parsing failed)",
             "grounding_evidence": []
         }]
+    else:
+        # Programmatically attach the FULL, original gap description ourselves,
+        # rather than trusting the LLM to restate it consistently. This
+        # guarantees every hypothesis always shows a detailed, traceable
+        # gap description regardless of how the LLM phrases its own response.
+        for hyp in hypotheses:
+            gap_num = hyp.get("addresses_gap_number")
+            if isinstance(gap_num, int) and 1 <= gap_num <= len(gaps):
+                matched_gap = gaps[gap_num - 1]
+                hyp["addresses_gap"] = matched_gap.get("gap_description", "Unknown")
+                hyp["gap_type"] = matched_gap.get("gap_type", "General")
+            else:
+                hyp["addresses_gap"] = "Unknown"
+                hyp["gap_type"] = "General"
 
     print(f"[Hypothesis Generation Agent] Generated {len(hypotheses)} hypothesis/hypotheses.")
 
@@ -125,5 +142,6 @@ if __name__ == "__main__":
         print(f"\n--- Hypothesis {i} ---")
         print("Statement:", hyp["hypothesis"])
         print("Addresses gap:", hyp["addresses_gap"])
+        print("Gap type:", hyp.get("gap_type", "General"))
         print("Novelty:", hyp["novelty_justification"])
         print("Grounded in:", hyp.get("grounding_evidence", []))
