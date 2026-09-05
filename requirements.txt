@@ -1,0 +1,4 @@
+requests
+arxiv
+python-dotenv
+pydantic
