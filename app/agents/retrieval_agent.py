@@ -13,10 +13,21 @@ from app.data.processor import process_paper
 from app.data.upload_handler import process_uploaded_files
 from app.embeddings.vector_store import store_chunks, search_chunks
 from app.orchestrator.state import ResearchState
+from app.utils.topic_guard import is_biomedical_topic
 
 
 def run_retrieval_agent(state: ResearchState, n_results: int = 8, fetch_fresh: bool = True) -> ResearchState:
     topic = state["topic"]
+
+    is_valid, reason = is_biomedical_topic(topic)
+    state["is_valid_topic"] = is_valid
+    state["validation_message"] = reason
+
+    if not is_valid:
+        print(f"[Retrieval Agent] Topic REJECTED: {reason}")
+        state["retrieved_chunks"] = []
+        return state
+
     india_only = state.get("india_only", False)
     year_from = state.get("year_from")
     year_to = state.get("year_to")

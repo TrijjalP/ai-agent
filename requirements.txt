@@ -6,3 +6,4 @@ beautifulsoup4
 sentence-transformers
 chromadb
 pypdf
+langgraph

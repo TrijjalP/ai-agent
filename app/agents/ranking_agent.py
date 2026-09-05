@@ -47,7 +47,10 @@ def merge_hypothesis_and_critique(hypotheses: list, critiques: list) -> list:
 def generate_ranking_rationale(top_hypothesis: dict) -> str:
     """
     Asks the LLM for a short, human-readable explanation of why the
-    top-ranked hypothesis earned the highest score.
+    top-ranked hypothesis earned the highest score. Defensively filters
+    out any sentence that looks like a hallucinated new instruction
+    (small local models occasionally drift into inventing an unrelated
+    task partway through, even within the first few sentences).
     """
     prompt = RATIONALE_PROMPT_TEMPLATE.format(
         hypothesis=top_hypothesis["hypothesis"],
@@ -58,8 +61,29 @@ def generate_ranking_rationale(top_hypothesis: dict) -> str:
         overall=top_hypothesis["overall_soundness_score"]
     )
 
-    rationale = call_llm(prompt, temperature=0.4, max_tokens=150)
-    return rationale.strip()
+    rationale = call_llm(prompt, temperature=0.3, max_tokens=80)
+    rationale = rationale.strip()
+
+    import re
+    sentences = re.split(r"(?<=[.!?])\s+", rationale)
+
+    # Drop any sentence that looks like the model drifted into a new
+    # instruction/task rather than continuing to explain the ranking.
+    instruction_like_starts = (
+        "you are", "you're", "your task", "evaluate the following",
+        "consider the following", "please evaluate"
+    )
+
+    clean_sentences = []
+    for s in sentences:
+        s_lower = s.strip().lower()
+        if any(s_lower.startswith(phrase) for phrase in instruction_like_starts):
+            break  # stop entirely once drift is detected, don't include anything after either
+        clean_sentences.append(s)
+
+    cleaned = " ".join(clean_sentences[:2]).strip()  # cap at 2 sentences even if all clean
+
+    return cleaned if cleaned else "Ranked highest based on overall weighted score across all evaluation criteria."
 
 
 def run_ranking_agent(state: ResearchState) -> ResearchState:

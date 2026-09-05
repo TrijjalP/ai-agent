@@ -28,37 +28,24 @@ DEFAULT_SCORE_WEIGHTS = {
 }
 
 
-CRITIQUE_PROMPT_TEMPLATE = """You are a skeptical, rigorous peer reviewer evaluating a proposed biomedical research hypothesis.
+CRITIQUE_PROMPT_TEMPLATE = """You are a peer reviewer. Evaluate this specific hypothesis carefully and output ONLY valid JSON, nothing else - no explanations, no markdown, no extra words before or after.
 
-Hypothesis to evaluate:
-"{hypothesis}"
+Hypothesis: "{hypothesis}"
+Addresses gap: "{addresses_gap}"
+Supporting findings: {facts_block}
 
-This hypothesis claims to address the following gap:
-"{addresses_gap}"
+Carefully assign DIFFERENT scores based on this hypothesis's actual strengths and weaknesses - do not use the same score for every criterion. Score each from 0 (very poor) to 10 (excellent):
+- feasibility_score: can this be tested with realistic methods?
+- novelty_score: how different is this from existing research?
+- evidence_grounding_score: how well do the supporting findings above actually support it?
+- specificity_score: how precise and falsifiable is the claim?
 
-It is grounded in these existing findings:
-{facts_block}
+List exactly 2 short weaknesses (under 10 words each), specific to THIS hypothesis.
 
-Score this hypothesis on FOUR criteria, each from 0 (very poor) to 10 (excellent):
-1. Feasibility: can this realistically be tested with available data/methods?
-2. Novelty: does it meaningfully differ from existing research?
-3. Evidence grounding: is it well-supported by the facts above, not speculative?
-4. Specificity: is it precise and falsifiable, not vague or overly broad?
+Output must be valid JSON matching this exact structure (keys and value types only - do NOT copy these example values, compute your own based on the hypothesis above):
+{{"feasibility_score": <integer 0-10>, "novelty_score": <integer 0-10>, "evidence_grounding_score": <integer 0-10>, "specificity_score": <integer 0-10>, "weaknesses": ["<short weakness>", "<short weakness>"], "existing_evidence_relation": "<short sentence>"}}
 
-Also list weaknesses and describe how existing evidence relates to it.
-
-Be extremely concise. Keep each weakness under 12 words. Provide exactly 2 weaknesses.
-Keep existing_evidence_relation under 20 words.
-
-Respond ONLY with a valid JSON object in this exact format, with no extra text before or after:
-{{
-  "feasibility_score": 0-10,
-  "novelty_score": 0-10,
-  "evidence_grounding_score": 0-10,
-  "specificity_score": 0-10,
-  "weaknesses": ["short weakness 1", "short weakness 2"],
-  "existing_evidence_relation": "one short sentence, under 20 words"
-}}
+Output only the JSON object with your computed scores. Nothing else.
 """
 
 
@@ -110,7 +97,7 @@ def critique_single_hypothesis(hypothesis: dict, facts: list, weights: dict, max
         facts_block=facts_block
     )
 
-    parsed, raw_response = call_llm_for_json(prompt, temperature=0.3, agent_name="Hypothesis Critique Agent")
+    parsed, raw_response = call_llm_for_json(prompt, temperature=0.3, max_retries=3 ,agent_name="Hypothesis Critique Agent")
 
     if parsed and isinstance(parsed, dict):
         sub_scores = {
