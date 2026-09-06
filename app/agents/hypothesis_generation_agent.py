@@ -18,11 +18,12 @@ The research topic is: "{topic}"
 Here are the identified gaps in current research, each numbered:
 {gaps_block}
 
-Here is a summary of existing findings from the literature (for grounding, so your hypotheses are realistic and build on real evidence, not speculation):
+Here is a summary of existing findings from the literature, each numbered (for grounding, so your hypotheses are realistic and build on real evidence, not speculation):
 {facts_block}
 
 For EACH gap listed above, propose ONE novel, testable research hypothesis that could help address it.
 Reference which gap each hypothesis addresses using its NUMBER only (not a restatement of the text).
+Reference which facts support your hypothesis using their NUMBERS only (not titles).
 
 Respond ONLY with a valid JSON array in this exact format, with no extra text before or after:
 [
@@ -30,7 +31,7 @@ Respond ONLY with a valid JSON array in this exact format, with no extra text be
     "hypothesis": "a clear, specific, testable hypothesis statement",
     "addresses_gap_number": 1,
     "novelty_justification": "1-2 sentences explaining what makes this hypothesis new/different from existing research",
-    "grounding_evidence": ["exact paper title(s) this hypothesis builds on"]
+    "grounding_evidence_numbers": [1, 2]
   }}
 ]
 """
@@ -58,11 +59,12 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
     Hypothesis Generation Agent's job:
     1. Take identified gaps + extracted facts from state
     2. Ask the LLM to propose one testable hypothesis per gap, referencing
-       gaps by number only (more reliable than trusting the LLM to restate
-       gap text accurately)
-    3. Programmatically attach the FULL original gap_description ourselves,
-       guaranteeing every hypothesis always shows a detailed, traceable
-       gap description regardless of how the LLM phrases things
+       gaps AND grounding facts by number only (more reliable than trusting
+       the LLM to restate gap/paper text accurately)
+    3. Programmatically attach the FULL original gap_description and exact
+       real paper titles ourselves, guaranteeing every hypothesis always
+       shows detailed, accurately traceable data regardless of how the
+       LLM phrases things
 
     Returns:
         Updated state with 'hypotheses' populated.
@@ -87,7 +89,7 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
         facts_block=facts_block
     )
 
-    hypotheses, raw_response = call_llm_for_json(prompt, temperature=0.6, agent_name="Hypothesis Generation Agent")
+    hypotheses, raw_response = call_llm_for_json(prompt, temperature=0.6, max_retries=3, max_tokens=3072, agent_name="Hypothesis Generation Agent")
 
     if not hypotheses or not isinstance(hypotheses, list):
         print("[Hypothesis Generation Agent] Warning: could not parse LLM output as JSON. Using fallback.")
@@ -99,12 +101,16 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
             "grounding_evidence": []
         }]
     else:
-        # Programmatically attach the FULL, original gap description ourselves,
-        # rather than trusting the LLM to restate it consistently. This
-        # guarantees every hypothesis always shows a detailed, traceable
-        # gap description regardless of how the LLM phrases its own response.
+        # Programmatically attach the FULL, original gap description AND
+        # exact real paper titles ourselves, rather than trusting the LLM
+        # to restate them consistently. This guarantees every hypothesis
+        # always shows detailed, traceable data regardless of how the LLM
+        # phrases its own response.
         for hyp in hypotheses:
             gap_num = hyp.get("addresses_gap_number")
+            if isinstance(gap_num, str) and gap_num.strip().isdigit():
+                gap_num = int(gap_num.strip())
+
             if isinstance(gap_num, int) and 1 <= gap_num <= len(gaps):
                 matched_gap = gaps[gap_num - 1]
                 hyp["addresses_gap"] = matched_gap.get("gap_description", "Unknown")
@@ -112,6 +118,16 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
             else:
                 hyp["addresses_gap"] = "Unknown"
                 hyp["gap_type"] = "General"
+
+            # Resolve grounding evidence numbers to exact real paper titles
+            evidence_numbers = hyp.get("grounding_evidence_numbers", [])
+            resolved_evidence = []
+            for num in evidence_numbers:
+                if isinstance(num, str) and num.strip().isdigit():
+                    num = int(num.strip())
+                if isinstance(num, int) and 1 <= num <= len(facts):
+                    resolved_evidence.append(facts[num - 1]["paper_title"])
+            hyp["grounding_evidence"] = resolved_evidence
 
     print(f"[Hypothesis Generation Agent] Generated {len(hypotheses)} hypothesis/hypotheses.")
 
