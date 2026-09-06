@@ -37,7 +37,12 @@ def merge_hypothesis_and_critique(hypotheses: list, critiques: list, retrieved_c
         grounding_titles = hyp.get("grounding_evidence", [])
 
         source_breakdown = []
+        seen_titles = set()
         for title in grounding_titles:
+            if title in seen_titles:
+                continue
+            seen_titles.add(title)
+
             origin = title_to_source.get(title, "unknown")
             origin_label = "User-uploaded" if origin == "user_upload" else (
                 "arXiv" if origin == "arxiv" else "Europe PMC (fetched)"
