@@ -7,3 +7,6 @@ sentence-transformers
 chromadb
 pypdf
 langgraph
+fastapi
+uvicorn
+python-multipart
