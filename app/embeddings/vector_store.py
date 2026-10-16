@@ -41,7 +41,8 @@ def store_chunks(chunks: List[Chunk]):
             "source": c.source,
             "chunk_index": c.chunk_index,
             "is_india_affiliated": c.is_india_affiliated,
-            "published": c.published
+            "published": c.published,
+            "is_full_text": c.is_full_text
         }
         for c in chunks
     ]
@@ -99,4 +100,5 @@ if __name__ == "__main__":
         print(f"\n--- Result {i+1} (distance: {dist:.4f}) ---")
         print("From paper:", meta["paper_title"])
         print("Published:", meta["published"])
+        print("Full text:", meta.get("is_full_text", False))
         print("Text:", doc[:200], "...")

@@ -1,10 +1,10 @@
 """
 hypothesis_generation_agent.py
 The Hypothesis Generation Agent: takes identified research gaps (grounded in
-extracted facts) and generates novel, testable research hypotheses to
-address them. Each hypothesis explicitly states which gap it targets and
-why it's novel, so downstream agents (Critique, Ranking) and the final UI
-have rich, traceable content to work with.
+retrieved literature chunks) and generates novel, testable research
+hypotheses to address them. Each hypothesis explicitly states which gap it
+targets and why it's novel, so downstream agents (Critique) and the final
+UI have rich, traceable content to work with.
 """
 
 from app.utils.llm_json import call_llm_for_json
@@ -18,12 +18,12 @@ The research topic is: "{topic}"
 Here are the identified gaps in current research, each numbered:
 {gaps_block}
 
-Here is a summary of existing findings from the literature, each numbered (for grounding, so your hypotheses are realistic and build on real evidence, not speculation):
-{facts_block}
+Here are excerpts from the existing literature, each numbered (for grounding, so your hypotheses are realistic and build on real evidence, not speculation):
+{chunks_block}
 
 For EACH gap listed above, propose ONE novel, testable research hypothesis that could help address it.
 Reference which gap each hypothesis addresses using its NUMBER only (not a restatement of the text).
-Reference which facts support your hypothesis using their NUMBERS only (not titles).
+Reference which excerpts support your hypothesis using their NUMBERS only (not titles).
 
 Respond ONLY with a valid JSON array in this exact format, with no extra text before or after:
 [
@@ -47,30 +47,28 @@ def format_gaps_for_prompt(gaps: list) -> str:
     return "\n\n".join(lines)
 
 
-def format_facts_for_prompt(facts: list) -> str:
+def format_chunks_for_prompt(chunks: list) -> str:
     lines = []
-    for i, fact in enumerate(facts, start=1):
-        lines.append(f"{i}. \"{fact['paper_title']}\": {fact['key_finding']}")
+    for i, chunk in enumerate(chunks, start=1):
+        lines.append(f"{i}. \"{chunk['paper_title']}\": {chunk['text']}")
     return "\n".join(lines)
 
 
 def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
     """
     Hypothesis Generation Agent's job:
-    1. Take identified gaps + extracted facts from state
+    1. Take identified gaps + retrieved chunks from state
     2. Ask the LLM to propose one testable hypothesis per gap, referencing
-       gaps AND grounding facts by number only (more reliable than trusting
-       the LLM to restate gap/paper text accurately)
+       gaps AND grounding excerpts by number only
     3. Programmatically attach the FULL original gap_description and exact
        real paper titles ourselves, guaranteeing every hypothesis always
-       shows detailed, accurately traceable data regardless of how the
-       LLM phrases things
+       shows detailed, accurately traceable data
 
     Returns:
         Updated state with 'hypotheses' populated.
     """
     gaps = state.get("identified_gaps", [])
-    facts = state.get("extracted_facts", [])
+    chunks = state.get("retrieved_chunks", [])
     topic = state.get("topic", "the given research area")
 
     print(f"[Hypothesis Generation Agent] Generating hypotheses for {len(gaps)} gap(s)...")
@@ -81,12 +79,12 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
         return state
 
     gaps_block = format_gaps_for_prompt(gaps)
-    facts_block = format_facts_for_prompt(facts)
+    chunks_block = format_chunks_for_prompt(chunks)
 
     prompt = HYPOTHESIS_PROMPT_TEMPLATE.format(
         topic=topic,
         gaps_block=gaps_block,
-        facts_block=facts_block
+        chunks_block=chunks_block
     )
 
     hypotheses, raw_response = call_llm_for_json(prompt, temperature=0.6, max_retries=3, max_tokens=3072, agent_name="Hypothesis Generation Agent")
@@ -101,11 +99,6 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
             "grounding_evidence": []
         }]
     else:
-        # Programmatically attach the FULL, original gap description AND
-        # exact real paper titles ourselves, rather than trusting the LLM
-        # to restate them consistently. This guarantees every hypothesis
-        # always shows detailed, traceable data regardless of how the LLM
-        # phrases its own response.
         for hyp in hypotheses:
             gap_num = hyp.get("addresses_gap_number")
             if isinstance(gap_num, str) and gap_num.strip().isdigit():
@@ -119,14 +112,13 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
                 hyp["addresses_gap"] = "Unknown"
                 hyp["gap_type"] = "General"
 
-            # Resolve grounding evidence numbers to exact real paper titles
             evidence_numbers = hyp.get("grounding_evidence_numbers", [])
             resolved_evidence = []
             for num in evidence_numbers:
                 if isinstance(num, str) and num.strip().isdigit():
                     num = int(num.strip())
-                if isinstance(num, int) and 1 <= num <= len(facts):
-                    resolved_evidence.append(facts[num - 1]["paper_title"])
+                if isinstance(num, int) and 1 <= num <= len(chunks):
+                    resolved_evidence.append(chunks[num - 1]["paper_title"])
             hyp["grounding_evidence"] = resolved_evidence
 
     print(f"[Hypothesis Generation Agent] Generated {len(hypotheses)} hypothesis/hypotheses.")
@@ -137,7 +129,6 @@ def run_hypothesis_generation_agent(state: ResearchState) -> ResearchState:
 
 if __name__ == "__main__":
     from app.agents.retrieval_agent import run_retrieval_agent
-    from app.agents.extraction_agent import run_extraction_agent
     from app.agents.gap_detection_agent import run_gap_detection_agent
 
     initial_state: ResearchState = {
@@ -149,7 +140,6 @@ if __name__ == "__main__":
     }
 
     state = run_retrieval_agent(initial_state, n_results=6)
-    state = run_extraction_agent(state)
     state = run_gap_detection_agent(state)
     state = run_hypothesis_generation_agent(state)
 
@@ -158,6 +148,5 @@ if __name__ == "__main__":
         print(f"\n--- Hypothesis {i} ---")
         print("Statement:", hyp["hypothesis"])
         print("Addresses gap:", hyp["addresses_gap"])
-        print("Gap type:", hyp.get("gap_type", "General"))
         print("Novelty:", hyp["novelty_justification"])
         print("Grounded in:", hyp.get("grounding_evidence", []))

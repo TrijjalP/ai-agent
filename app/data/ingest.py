@@ -56,8 +56,11 @@ def ingest_topic(topic: str, india_only: bool = False):
     for paper in papers:
         all_chunks.extend(process_paper(paper))
 
+    full_text_chunks = sum(1 for c in all_chunks if c.is_full_text)
+    print(f"  {full_text_chunks}/{len(all_chunks)} chunk(s) are full-text (rest are abstract-only)")
+
     store_chunks(all_chunks)
-    return len(papers), len(all_chunks)
+    return len(papers), len(all_chunks), full_text_chunks
 
 
 def run_ingestion():
@@ -66,16 +69,20 @@ def run_ingestion():
 
     total_papers = 0
     total_chunks = 0
+    total_full_text_chunks = 0
 
     for topic in TOPICS:
-        p1, c1 = ingest_topic(topic, india_only=False)
-        p2, c2 = ingest_topic(topic, india_only=True)
+        p1, c1, f1 = ingest_topic(topic, india_only=False)
+        p2, c2, f2 = ingest_topic(topic, india_only=True)
         total_papers += p1 + p2
         total_chunks += c1 + c2
+        total_full_text_chunks += f1 + f2
 
     print("\n=== Ingestion complete ===")
     print(f"Total papers processed this run: {total_papers}")
     print(f"Total chunks added this run: {total_chunks}")
+    print(f"Full-text chunks this run: {total_full_text_chunks} "
+          f"({round(100 * total_full_text_chunks / total_chunks, 1) if total_chunks else 0}% of chunks added)")
     print(f"Total chunks now in database: {count_chunks()}")
 
 

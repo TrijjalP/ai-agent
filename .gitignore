@@ -8,4 +8,4 @@ data/processed/*
 !data/processed/.gitkeep
 chroma_db/
 *.db
-.DS_Store
+.DS_Storeuploads/

@@ -6,16 +6,9 @@ Novelty, Evidence Grounding, Specificity). Each criterion is scored 0-10
 by the LLM, and we COMPUTE the overall soundness score ourselves as a
 weighted average.
 
-The weighting is USER-CONFIGURABLE via state['score_weights'], since the
-"right" balance between these criteria genuinely depends on the research
-context (e.g. a clinical feasibility study may value Feasibility highly,
-while an exploratory/theoretical research review may value Novelty more).
-If the user doesn't provide weights, we default to equal weighting (25%
-each) as a neutral, defensible baseline.
+The weighting is USER-CONFIGURABLE via state['score_weights'].
 """
 
-# from app.utils.llm_client import call_llm
-# from app.utils.json_parser import extract_json
 from app.utils.llm_json import call_llm_for_json
 from app.orchestrator.state import ResearchState
 
@@ -32,12 +25,12 @@ CRITIQUE_PROMPT_TEMPLATE = """You are a peer reviewer. Evaluate this specific hy
 
 Hypothesis: "{hypothesis}"
 Addresses gap: "{addresses_gap}"
-Supporting findings: {facts_block}
+Supporting literature: {chunks_block}
 
 Carefully assign DIFFERENT scores based on this hypothesis's actual strengths and weaknesses - do not use the same score for every criterion. Score each from 0 (very poor) to 10 (excellent):
 - feasibility_score: can this be tested with realistic methods?
 - novelty_score: how different is this from existing research?
-- evidence_grounding_score: how well do the supporting findings above actually support it?
+- evidence_grounding_score: how well does the supporting literature above actually support it?
 - specificity_score: how precise and falsifiable is the claim?
 
 List exactly 2 short weaknesses (under 10 words each), specific to THIS hypothesis.
@@ -49,18 +42,15 @@ Output only the JSON object with your computed scores. Nothing else.
 """
 
 
-def format_facts_for_prompt(facts: list) -> str:
+def format_chunks_for_prompt(chunks: list) -> str:
     lines = []
-    for fact in facts:
-        lines.append(f"- \"{fact['paper_title']}\": {fact['key_finding']}")
-    return "\n".join(lines) if lines else "No supporting facts available."
+    for chunk in chunks:
+        snippet = chunk["text"][:200] + ("..." if len(chunk["text"]) > 200 else "")
+        lines.append(f"- \"{chunk['paper_title']}\": {snippet}")
+    return "\n".join(lines) if lines else "No supporting literature available."
 
 
 def validate_weights(weights: dict) -> dict:
-    """
-    Validates user-supplied weights. Falls back to equal weighting if
-    weights are missing, incomplete, or don't sum to approximately 1.0.
-    """
     if not weights:
         return DEFAULT_SCORE_WEIGHTS
 
@@ -70,7 +60,7 @@ def validate_weights(weights: dict) -> dict:
         return DEFAULT_SCORE_WEIGHTS
 
     total = sum(weights.values())
-    if not (0.99 <= total <= 1.01):  # allow tiny floating point tolerance
+    if not (0.99 <= total <= 1.01):
         print(f"[Hypothesis Critique Agent] Warning: score_weights sum to {total}, not 1.0. Using defaults.")
         return DEFAULT_SCORE_WEIGHTS
 
@@ -78,26 +68,22 @@ def validate_weights(weights: dict) -> dict:
 
 
 def compute_overall_score(scores: dict, weights: dict) -> float:
-    """
-    Computes a weighted overall soundness score (0-10) from the 4 sub-scores,
-    using the given (user-defined or default) weights.
-    """
     total = 0.0
     for key, weight in weights.items():
         total += scores.get(key, 0) * weight
     return round(total, 2)
 
 
-def critique_single_hypothesis(hypothesis: dict, facts: list, weights: dict, max_retries: int = 1) -> dict:
-    facts_block = format_facts_for_prompt(facts)
+def critique_single_hypothesis(hypothesis: dict, chunks: list, weights: dict) -> dict:
+    chunks_block = format_chunks_for_prompt(chunks)
 
     prompt = CRITIQUE_PROMPT_TEMPLATE.format(
         hypothesis=hypothesis.get("hypothesis", ""),
         addresses_gap=hypothesis.get("addresses_gap", ""),
-        facts_block=facts_block
+        chunks_block=chunks_block
     )
 
-    parsed, raw_response = call_llm_for_json(prompt, temperature=0.3, max_retries=3 ,agent_name="Hypothesis Critique Agent")
+    parsed, raw_response = call_llm_for_json(prompt, temperature=0.3, max_retries=3, agent_name="Hypothesis Critique Agent")
 
     if parsed and isinstance(parsed, dict):
         sub_scores = {
@@ -109,10 +95,7 @@ def critique_single_hypothesis(hypothesis: dict, facts: list, weights: dict, max
         overall_score = compute_overall_score(sub_scores, weights)
 
         return {
-            "feasibility_score": sub_scores["feasibility_score"],
-            "novelty_score": sub_scores["novelty_score"],
-            "evidence_grounding_score": sub_scores["evidence_grounding_score"],
-            "specificity_score": sub_scores["specificity_score"],
+            **sub_scores,
             "overall_soundness_score": overall_score,
             "weaknesses": parsed.get("weaknesses", []),
             "existing_evidence_relation": parsed.get("existing_evidence_relation", "")
@@ -131,18 +114,8 @@ def critique_single_hypothesis(hypothesis: dict, facts: list, weights: dict, max
 
 
 def run_hypothesis_critique_agent(state: ResearchState) -> ResearchState:
-    """
-    Hypothesis Critique Agent's job:
-    1. Take each hypothesis from state['hypotheses']
-    2. Critically evaluate it against 4 explicit criteria
-    3. Compute a weighted overall soundness score using user-defined
-       (or default equal) weights from state['score_weights']
-
-    Returns:
-        Updated state with 'critiques' populated.
-    """
     hypotheses = state.get("hypotheses", [])
-    facts = state.get("extracted_facts", [])
+    chunks = state.get("retrieved_chunks", [])
     weights = validate_weights(state.get("score_weights"))
 
     print(f"[Hypothesis Critique Agent] Critiquing {len(hypotheses)} hypothesis/hypotheses...")
@@ -151,7 +124,7 @@ def run_hypothesis_critique_agent(state: ResearchState) -> ResearchState:
     critiques = []
     for i, hyp in enumerate(hypotheses, start=1):
         print(f"[Hypothesis Critique Agent] Evaluating hypothesis {i}/{len(hypotheses)}...")
-        critique = critique_single_hypothesis(hyp, facts, weights)
+        critique = critique_single_hypothesis(hyp, chunks, weights)
         critiques.append({
             "hypothesis": hyp.get("hypothesis", ""),
             **critique
@@ -165,12 +138,9 @@ def run_hypothesis_critique_agent(state: ResearchState) -> ResearchState:
 
 if __name__ == "__main__":
     from app.agents.retrieval_agent import run_retrieval_agent
-    from app.agents.extraction_agent import run_extraction_agent
     from app.agents.gap_detection_agent import run_gap_detection_agent
     from app.agents.hypothesis_generation_agent import run_hypothesis_generation_agent
 
-    # Example: user decides Feasibility and Evidence Grounding matter most
-    # for THIS particular research context (clinical, India-focused topic)
     custom_weights = {
         "feasibility_score": 0.35,
         "novelty_score": 0.15,
@@ -188,7 +158,6 @@ if __name__ == "__main__":
     }
 
     state = run_retrieval_agent(initial_state, n_results=6)
-    state = run_extraction_agent(state)
     state = run_gap_detection_agent(state)
     state = run_hypothesis_generation_agent(state)
     state = run_hypothesis_critique_agent(state)
@@ -197,10 +166,4 @@ if __name__ == "__main__":
     for i, crit in enumerate(state["critiques"], start=1):
         print(f"\n--- Critique {i} ---")
         print("Hypothesis:", crit["hypothesis"][:100], "...")
-        print(f"  Feasibility: {crit['feasibility_score']}/10")
-        print(f"  Novelty: {crit['novelty_score']}/10")
-        print(f"  Evidence grounding: {crit['evidence_grounding_score']}/10")
-        print(f"  Specificity: {crit['specificity_score']}/10")
         print(f"  OVERALL SOUNDNESS: {crit['overall_soundness_score']}/10")
-        print("  Weaknesses:", crit["weaknesses"])
-        print("  Existing evidence relation:", crit["existing_evidence_relation"])

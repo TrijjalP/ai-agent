@@ -1,58 +1,57 @@
 """
 llm_client.py
-A thin wrapper around Ollama's local API. Every agent that needs to call
-the LLM should use this function, so if we ever switch models or add
-retry logic, we only change it in one place.
+Calls the Groq-hosted LLM (replacing the old local Ollama/Phi-3 call).
+Keeps the same function signature as before (prompt, model, temperature,
+max_tokens) so every agent that already calls call_llm() keeps working
+without any changes on their end.
 """
 
-import requests
+import os
+from dotenv import load_dotenv
+from groq import Groq
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-DEFAULT_MODEL = "phi3"
+load_dotenv(override=True)  # reads GROQ_API_KEY from your .env file
+
+_client = None
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "GROQ_API_KEY not set. Add it to your .env file in the project root."
+            )
+        print(f"[DEBUG] Using key starting with: {api_key[:7]}... (length {len(api_key)})")
+        _client = Groq(api_key=api_key)
+    return _client
 
 
 def call_llm(
     prompt: str,
-    model: str = DEFAULT_MODEL,
+    model: str = "openai/gpt-oss-120b",
     temperature: float = 0.3,
     max_tokens: int = 2048,
-    context_window: int = 4096
+    context_window: int = None,  # kept for backward compatibility, unused by Groq
 ) -> str:
     """
-    Send a prompt to the local Ollama LLM and return its text response.
-
-    Args:
-        prompt: the full prompt text to send
-        model: which local model to use (default: phi3)
-        temperature: lower = more focused/deterministic, higher = more creative
-        max_tokens: max length of the response (num_predict)
-        context_window: total token budget shared between prompt + response
-                         (num_ctx) — increased from Ollama's default (often
-                         2048) since our prompts with multiple facts can be
-                         long, leaving too little room for the response
-                         otherwise, causing truncated/invalid JSON.
-
-    Returns:
-        The model's response as a plain string.
+    Sends a prompt to the Groq-hosted LLM and returns the plain text response.
     """
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": temperature,
-            "num_predict": max_tokens,
-            "num_ctx": context_window
-        }
-    }
-
-    response = requests.post(OLLAMA_URL, json=payload, timeout=180)
-    response.raise_for_status()
-
-    data = response.json()
-    return data.get("response", "").strip()
+    client = _get_client()
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        return response.choices[0].message.content or ""
+    except Exception as e:
+        print(f"[LLM Client] Groq API call failed: {e}")
+        return ""
 
 
 if __name__ == "__main__":
-    reply = call_llm("In one sentence, what is tuberculosis?")
-    print("LLM response:", reply)
+    test_response = call_llm("Say hello in one short sentence.")
+    print("Response:", test_response)

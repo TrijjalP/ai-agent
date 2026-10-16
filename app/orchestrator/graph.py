@@ -1,17 +1,17 @@
 """
 graph.py
-The LangGraph orchestrator: wires all 6 agents into a formal graph,
-replacing the manual `state = run_x(state)` chains used in each agent's
-test block. This becomes the single entry point the FastAPI backend
-(and eventually the Streamlit UI) will call to run the entire pipeline.
+The LangGraph orchestrator: wires the 4 reasoning agents into a formal
+graph. Ranking is deliberately NOT a graph node — it's pure sorting +
+formatting over data the Critique Agent already produced, so it runs as
+a plain Python function right after the graph finishes, not as an LLM
+agent step.
 """
 
 from langgraph.graph import StateGraph, END
 from app.orchestrator.state import ResearchState
 
 from app.agents.retrieval_agent import run_retrieval_agent
-from app.agents.extraction_agent import run_extraction_agent
-from app.agents.gap_detection_agent import run_gap_detection_agent
+from app.agents.comparison_agent import run_comparison_agent
 from app.agents.hypothesis_generation_agent import run_hypothesis_generation_agent
 from app.agents.hypothesis_critique_agent import run_hypothesis_critique_agent
 from app.agents.ranking_agent import run_ranking_agent
@@ -20,37 +20,47 @@ from app.agents.ranking_agent import run_ranking_agent
 def build_research_graph():
     """
     Builds and compiles the LangGraph pipeline:
-    Retrieval -> Extraction -> Gap Detection -> Hypothesis Generation
-    -> Critique -> Ranking -> END
+    Retrieval -> Comparison -> Hypothesis Generation -> Critique -> END
 
-    Returns:
-        A compiled LangGraph app that can be invoked with an initial state.
+    Retrieval auto-selects the top 4 papers (by relevance) for now;
+    candidate_papers is still returned in state so a "swap this paper"
+    UI feature can be added later without touching this graph.
     """
     graph = StateGraph(ResearchState)
 
-    # Register each agent as a node in the graph
     graph.add_node("retrieval", run_retrieval_agent)
-    graph.add_node("extraction", run_extraction_agent)
-    graph.add_node("gap_detection", run_gap_detection_agent)
+    graph.add_node("comparison", run_comparison_agent)
     graph.add_node("hypothesis_generation", run_hypothesis_generation_agent)
     graph.add_node("critique", run_hypothesis_critique_agent)
-    graph.add_node("ranking", run_ranking_agent)
 
-    # Define the sequential flow (a straight line for now; this is where
-    # future loops/branches, e.g. "if scores too low, regenerate", would go)
     graph.set_entry_point("retrieval")
-    graph.add_edge("retrieval", "extraction")
-    graph.add_edge("extraction", "gap_detection")
-    graph.add_edge("gap_detection", "hypothesis_generation")
+    graph.add_edge("retrieval", "comparison")
+    graph.add_edge("comparison", "hypothesis_generation")
     graph.add_edge("hypothesis_generation", "critique")
-    graph.add_edge("critique", "ranking")
-    graph.add_edge("ranking", END)
+    graph.add_edge("critique", END)
 
     return graph.compile()
 
 
-# Build once, reuse across calls (e.g. from FastAPI later)
+# Build once, reuse across calls (e.g. from FastAPI)
 research_graph = build_research_graph()
+
+
+def run_full_pipeline(initial_state: ResearchState) -> ResearchState:
+    """
+    Runs the full pipeline: the 4-agent LangGraph chain, then Ranking as a
+    plain deterministic code step (not an LLM agent) immediately after.
+    This is the single entry point the API/UI should call.
+    """
+    state = research_graph.invoke(initial_state)
+
+    if not state.get("is_valid_topic", True):
+        # Topic was rejected by the Retrieval Agent's built-in topic guard —
+        # nothing to rank.
+        return state
+
+    state = run_ranking_agent(state)
+    return state
 
 
 if __name__ == "__main__":
@@ -62,23 +72,42 @@ if __name__ == "__main__":
     }
 
     initial_state: ResearchState = {
-        "topic": "biomedical engineering current trends and future prospects",
+        "topic": "compare human cloning research papers",
         "india_only": False,
-        "year_from": 2021,
+        "year_from": 2020,
         "year_to": 2026,
-        "gap_focus": "Compare AI in biomedical research in India versus other countries, focused on research from 2021 onwards",
-        "score_weights": custom_weights,
-        "uploaded_file_paths": ["test_paper.pdf"]
+        "gap_focus": "Compare these papers' methodology, conclusions, and differences",
+        "score_weights": custom_weights
     }
 
-    print("Running full research pipeline via LangGraph...\n")
-    final_state = research_graph.invoke(initial_state)
+    print("Running full research pipeline (4 agents + code-based ranking)...\n")
+    final_state = run_full_pipeline(initial_state)
 
     if not final_state.get("is_valid_topic", True):
-        print(f"\n❌ Topic rejected: {final_state.get('validation_message')}")
+        print(f"\nTopic rejected: {final_state.get('validation_message')}")
         print("This system only processes biomedical/medical/life sciences research topics.")
     else:
-        print("\n=== FINAL RANKED HYPOTHESES (via LangGraph) ===")
+        print("\n=== SELECTED PAPERS (auto-selected top 4) ===")
+        for p in final_state.get("selected_papers", []):
+            print(f"- {p.get('title', p.get('paper_title', 'Untitled'))}")
+
+        print("\n=== CANDIDATE PAPERS (available to swap in, not used yet) ===")
+        for p in final_state.get("candidate_papers", []):
+            print(f"- {p.get('title', p.get('paper_title', 'Untitled'))}")
+
+        print("\n=== PAPER SUMMARIES & COMPARISON ===")
+        for s in final_state.get("paper_summaries", []):
+           title = s.get("title") or s.get("paper_title") or "Untitled"
+           methodology = s.get("methodology") or s.get("methodology_summary") or "N/A"
+           conclusion = s.get("conclusion") or s.get("conclusion_summary") or "N/A"
+           print(f"\n- {title}")
+           print(f"  Methodology: {methodology}")
+           print(f"  Conclusion: {conclusion}")
+
+        print("\n=== RECOMMENDED PAPER ===")
+        print(final_state.get("recommended_paper"))
+
+        print("\n=== FINAL RANKED HYPOTHESES ===")
         for hyp in final_state["ranked_hypotheses"]:
             print(f"\n--- Rank #{hyp['rank']} (Score: {hyp['overall_soundness_score']}/10) ---")
             print("Hypothesis:", hyp["hypothesis"])

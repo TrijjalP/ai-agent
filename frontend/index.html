@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BioMed-Agent &mdash; AI Biomedical Research Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;1,500;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Splash / loading screen — shown once on first load, then vanishes -->
+<div class="splash" id="splashScreen">
+  <div class="splash-content">
+    <div class="splash-logo"><img src="logo.png" alt="" /></div>
+    <h1 class="splash-title">Welcome to <em>BioMed-Agent</em></h1>
+    <p class="splash-sub">Your AI biomedical research agent and hypothesis generator</p>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- Config panel -->
+  <section class="panel panel-config">
+    <div class="panel-scroll">
+
+      <div class="brand-row">
+        <div class="brand-mark"><img src="logo.png" alt="BioMed-Agent logo" /></div>
+        <div>
+          <div class="brand-name">BioMed-Agent</div>
+          <div class="brand-sub">AI Biomedical Research Agent and Hypothesis Generator</div>
+        </div>
+      </div>
+
+      <div class="block">
+        <label class="block-label" for="topicInput">Your research question</label>
+        <p class="muted" style="margin:0 0 8px;">Optional if you've uploaded papers below</p>
+        <textarea id="topicInput" class="topic-input" rows="2"
+          placeholder="e.g. compare human cloning research papers"></textarea>
+      </div>
+
+      <div class="block">
+        <div class="block-head">
+          <div>
+            <h3>Select the year range you want to review</h3>
+            <p class="muted">Publication years, Global or India based</p>
+          </div>
+          <div class="toggle-row">
+            <span class="toggle-label" id="globalToggleLabel">Global</span>
+            <label class="switch">
+              <input type="checkbox" id="globalToggle" checked />
+              <span class="slider-pill"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="year-row">
+          <div class="year-field">
+            <span class="muted">From</span>
+            <input type="number" id="yearFrom" value="2020" min="2020" max="2026" />
+          </div>
+          <span class="dash">&mdash;</span>
+          <div class="year-field">
+            <span class="muted">To</span>
+            <input type="number" id="yearTo" value="2026" min="2020" max="2026" />
+          </div>
+        </div>
+        <p class="year-hint">Starts with 2020 &middot; papers available from 2020 to 2026</p>
+      </div>
+
+      <div class="block">
+        <div class="block-head">
+          <div>
+            <h3>Evidence priorities</h3>
+            <p class="muted">Set the balance for your synthesis</p>
+          </div>
+          <span class="pill" id="balancePill">&#9679; Balanced &middot; 100%</span>
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-item">
+            <div class="slider-row">
+              <span>Novelty</span><span class="slider-val" id="val-novelty">35%</span>
+            </div>
+            <input type="range" min="0" max="100" value="35" class="range" id="slider-novelty" data-key="novelty_score" />
+          </div>
+
+          <div class="slider-item">
+            <div class="slider-row">
+              <span>Clinical relevance</span><span class="slider-val" id="val-clinical">30%</span>
+            </div>
+            <input type="range" min="0" max="100" value="30" class="range" id="slider-clinical" data-key="evidence_grounding_score" />
+          </div>
+
+          <div class="slider-item">
+            <div class="slider-row">
+              <span>Methodological rigor</span><span class="slider-val" id="val-rigor">20%</span>
+            </div>
+            <input type="range" min="0" max="100" value="20" class="range" id="slider-rigor" data-key="feasibility_score" />
+          </div>
+
+          <div class="slider-item">
+            <div class="slider-row">
+              <span>Specificity</span><span class="slider-val" id="val-specificity">15%</span>
+            </div>
+            <input type="range" min="0" max="100" value="15" class="range" id="slider-specificity" data-key="specificity_score" />
+          </div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-head">
+          <div>
+            <h3>Add context</h3>
+            <p class="muted">Optional &middot; up to 4 files</p>
+          </div>
+          <span class="muted" id="fileCount">0 / 4</span>
+        </div>
+        <label class="upload-box" for="fileInput">
+          <span class="upload-plus">+</span>
+          <span>
+            <strong>Upload supporting files</strong>
+            <div class="muted small">PDF, DOCX or TXT &middot; drag and drop or browse</div>
+          </span>
+        </label>
+        <input type="file" id="fileInput" accept=".pdf,.docx,.txt" multiple hidden />
+        <div id="fileList" class="file-list"></div>
+      </div>
+
+      <div class="run-row">
+        <div class="run-col">
+          <button class="run-btn" id="runBtn" type="button">Run research pipeline &#8599;</button>
+          <div class="inline-status">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">Agent ready</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Results / preview panel -->
+  <section class="panel panel-results">
+    <div class="results-scroll" id="resultsScroll">
+
+      <!-- Idle state -->
+      <div class="idle-state" id="idleState">
+        <div class="dna-wrap" id="dnaIdle"></div>
+        <div class="eyebrow">YOUR MAP STARTS HERE</div>
+        <h1 class="hero">
+          Bring a question.<br/>
+          <em>Leave with a direction.</em>
+        </h1>
+        <p class="hero-sub">
+          Once you run the pipeline, this space will become a living map of
+          papers, comparisons, gaps, and hypothesis seeds.
+        </p>
+        <div class="steps-row">
+          <span><em>01</em> Discover</span>
+          <span><em>02</em> Compare</span>
+          <span><em>03</em> Hypothesize</span>
+        </div>
+      </div>
+
+      <!-- Loading state -->
+      <div class="loading-state hidden" id="loadingState">
+        <div class="dna-wrap" id="dnaLoading"></div>
+        <div class="eyebrow" id="loadingStage">RETRIEVING PAPERS</div>
+        <h2 class="loading-title">Reading the literature&hellip;</h2>
+        <p class="hero-sub" id="loadingSub">Finding and ranking the most relevant papers for your topic.</p>
+      </div>
+
+      <!-- Results state (populated by app.js once the output UI reference is built) -->
+      <div class="results-state hidden" id="resultsState">
+        <!-- content injected by app.js -->
+      </div>
+
+      <!-- Error state -->
+      <div class="error-state hidden" id="errorState">
+        <div class="eyebrow">SOMETHING WENT WRONG</div>
+        <h2 class="loading-title" id="errorTitle">The pipeline hit an error</h2>
+        <p class="hero-sub" id="errorMessage"></p>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+
+<footer class="site-footer">
+  Designed &amp; developed by <strong>Trijjal Prajapati</strong>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
